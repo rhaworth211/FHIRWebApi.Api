@@ -1,7 +1,35 @@
 using Hl7.Fhir.Model.CdsHooks;
 using Hl7.Fhir.Rest;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Add Authentication and Authorization services
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+
+        ValidIssuer = builder.Configuration["Jwt:Issuer"],
+        ValidAudience = builder.Configuration["Jwt:Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+    };
+});
+
+// Add Authorization
+builder.Services.AddAuthorization();
 
 // Add services to the container.
 builder.Services.AddCors(options =>
@@ -67,6 +95,8 @@ app.Use(async (context, next) =>
 app.UseHttpsRedirection();
 
 app.UseCors("AllowAngularDevClient");
+
+app.UseAuthentication();
 
 app.UseAuthorization();
 
