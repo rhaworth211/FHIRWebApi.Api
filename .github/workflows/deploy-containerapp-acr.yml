@@ -32,7 +32,7 @@ jobs:
     - name: Build and Push Docker Image to ACR
       run: |
         ACR_LOGIN_SERVER=$(az acr show --name $ACR_NAME --query loginServer --output tsv)
-        docker build -t $ACR_LOGIN_SERVER/$IMAGE_NAME:latest -f FHIRWebApi.Api/Dockerfile FHIRWebApi.Api
+        docker build -t $ACR_LOGIN_SERVER/$IMAGE_NAME:latest -f FHIRWebApi.Api/Dockerfile .
         docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:latest
 
     - name: Deploy to Azure Container App
