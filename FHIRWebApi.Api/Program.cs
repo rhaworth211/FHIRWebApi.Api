@@ -1,10 +1,25 @@
-using Hl7.Fhir.Model.CdsHooks;
+using Azure.Identity;
+using Azure.Security.KeyVault.Secrets;
 using Hl7.Fhir.Rest;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Add Redis Cache using Azure Key Vault for secrets
+var keyVaultUrl = builder.Configuration["KeyVault:Url"]; 
+var redisSecretName = "RedisPrimaryKey";
+
+var client = new SecretClient(new Uri(keyVaultUrl), new DefaultAzureCredential());
+KeyVaultSecret redisSecret = client.GetSecret(redisSecretName);
+var redisKey = redisSecret.Value;
+
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = redisKey;
+    options.InstanceName = "FHIRWebApi:";
+});
 
 // Add Authentication and Authorization services
 builder.Services.AddAuthentication(options =>

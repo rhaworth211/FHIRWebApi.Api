@@ -4,9 +4,12 @@ using Hl7.Fhir.Model;
 using Hl7.Fhir.Rest;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Distributed;
+using Newtonsoft.Json;
 
 namespace FHIRHelpers.Api.Controllers
-{
+{    
+
     /// <summary>
     /// API controller for managing FHIR Patient resources.
     /// Provides endpoints to create, read, update, and delete patients via FHIR server.
@@ -14,16 +17,20 @@ namespace FHIRHelpers.Api.Controllers
     [Route("api/[controller]")]
     [ApiController]
     public class PatientsController : ControllerBase, IPatientController
-    {
+    {        
         private readonly FhirClient _fhirClient;
+        private readonly IDistributedCache _cache;
+        private readonly ILogger<PatientsController> _logger;
 
         /// <summary>
         /// Constructs a new instance of the <see cref="PatientsController"/>.
         /// </summary>
         /// <param name="fhirClient">Injected FHIR client used to interact with the FHIR server.</param>
-        public PatientsController(FhirClient fhirClient)
+        public PatientsController(FhirClient fhirClient, IDistributedCache cache, ILogger<PatientsController> logger)
         {
             _fhirClient = fhirClient;
+            _cache = cache;
+            _logger = logger;
         }
 
         /// <summary>
@@ -34,6 +41,16 @@ namespace FHIRHelpers.Api.Controllers
         [HttpGet()]
         public async Task<ActionResult<IEnumerable<Patient>>> GetPatients()
         {
+            const string cacheKey = "patients:latest";
+            var cached = await _cache.GetStringAsync(cacheKey);
+
+            if (!string.IsNullOrEmpty(cached))
+            {
+                _logger.LogInformation("Cache hit for patient list.");
+                var cachedPatients = JsonConvert.DeserializeObject<List<Patient>>(cached);
+                return Ok(cachedPatients);
+            }
+
             var searchParams = new SearchParams().LimitTo(20).SummaryOnly();
             var bundle = await _fhirClient.SearchAsync<Patient>(searchParams);
 
@@ -59,9 +76,26 @@ namespace FHIRHelpers.Api.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<Patient>> GetPatient(string id)
         {
+            var cacheKey = $"patient:{id}";
+            var cached = await _cache.GetStringAsync(cacheKey);
+
+            if (!string.IsNullOrEmpty(cached))
+            {
+                _logger.LogInformation("Cache hit for patient {id}", id);
+                var patient = JsonConvert.DeserializeObject<Patient>(cached);
+                return Ok(patient);
+            }
+
             try
             {
                 var patient = await _fhirClient.ReadAsync<Patient>($"Patient/{id}");
+
+                var json = JsonConvert.SerializeObject(patient); 
+                await _cache.SetStringAsync(cacheKey, json, new DistributedCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
+                });
+
                 return Ok(patient);
             }
             catch (FhirOperationException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)
@@ -108,6 +142,8 @@ namespace FHIRHelpers.Api.Controllers
                 return BadRequest("Failed to create patient.");
             }
 
+            await _cache.RemoveAsync("patients:latest");
+
             return CreatedAtAction(nameof(GetPatient), new { id = created.Id }, created);
         }
 
@@ -123,6 +159,11 @@ namespace FHIRHelpers.Api.Controllers
         {
             updatedPatient.Id = id;
             var result = await _fhirClient.UpdateAsync(updatedPatient);
+
+            var cacheKey = $"patient:{id}";
+            await _cache.RemoveAsync(cacheKey);
+            await _cache.RemoveAsync("patients:latest");
+
             return Ok(result);
         }
 
@@ -138,6 +179,9 @@ namespace FHIRHelpers.Api.Controllers
             try
             {
                 await _fhirClient.DeleteAsync($"Patient/{id}");
+                var cacheKey = $"patient:{id}";
+                await _cache.RemoveAsync(cacheKey);
+                await _cache.RemoveAsync("patients:latest");
                 return NoContent();
             }
             catch (FhirOperationException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)

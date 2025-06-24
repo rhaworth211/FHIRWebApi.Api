@@ -3,50 +3,66 @@ using Hl7.Fhir.Model;
 using Hl7.Fhir.Rest;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Text;
+using Microsoft.Extensions.Caching.Distributed;
+using Newtonsoft.Json;
 
 namespace FHIRWebApi.Controllers
 {
-    /// <summary>
-    /// API controller for managing FHIR Observation resources.
-    /// Supports CRUD operations with optional patient filtering.
-    /// </summary>
     [ApiController]
     [Route("api/[controller]")]
     public class ObservationsController : ControllerBase
     {
         private readonly FhirClient _fhirClient;
+        private readonly IDistributedCache _cache;
+        private readonly ILogger<ObservationsController> _logger;
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="ObservationsController"/> class.
-        /// </summary>
-        /// <param name="fhirClient">The FHIR client used to communicate with the FHIR server.</param>
-        public ObservationsController(FhirClient fhirClient)
+        public ObservationsController(FhirClient fhirClient, IDistributedCache cache, ILogger<ObservationsController> logger)
         {
             _fhirClient = fhirClient;
+            _cache = cache;
+            _logger = logger;
         }
 
-        /// <summary>
-        /// Retrieves either a single observation by ID or the latest 50 observations.
-        /// Optionally filters by a patient ID.
-        /// </summary>
-        /// <param name="patientId">Optional FHIR resource ID for a specific patient.</param>
-        /// <returns>A list of matching observations or a single observation if patientId is provided.</returns>
         [Authorize]
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Observation>>> GetObservations([FromQuery] string? patientId = null)
         {
             if (!string.IsNullOrEmpty(patientId))
             {
+                var key = $"observation:patient:{patientId}";
+                var cached = await _cache.GetStringAsync(key);
+                if (!string.IsNullOrEmpty(cached))
+                {
+                    _logger.LogInformation("Cache hit for patient observation {PatientId}", patientId);
+                    var obs = JsonConvert.DeserializeObject<List<Observation>>(cached);
+                    return Ok(obs);
+                }
+
                 try
                 {
-                    var observation = await _fhirClient.ReadAsync<Observation>($"Observation/{patientId}");
-                    return Ok(new List<Observation> { observation });
+                    var obs = await _fhirClient.ReadAsync<Observation>($"Observation/{patientId}");
+                    var result = new List<Observation> { obs };
+
+                    await _cache.SetStringAsync(key, JsonConvert.SerializeObject(result), new DistributedCacheEntryOptions
+                    {
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5)
+                    });
+
+                    return Ok(result);
                 }
                 catch (FhirOperationException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)
                 {
                     return NotFound();
                 }
+            }
+
+            const string cacheKey = "observations:latest";
+            var cachedAll = await _cache.GetStringAsync(cacheKey);
+            if (!string.IsNullOrEmpty(cachedAll))
+            {
+                _logger.LogInformation("Cache hit for all observations");
+                var obs = JsonConvert.DeserializeObject<List<Observation>>(cachedAll);
+                return Ok(obs);
             }
 
             var searchParams = new SearchParams().LimitTo(50);
@@ -60,21 +76,37 @@ namespace FHIRWebApi.Controllers
                 .Select(e => (Observation)e.Resource!)
                 .ToList();
 
+            await _cache.SetStringAsync(cacheKey, JsonConvert.SerializeObject(observations), new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5)
+            });
+
             return Ok(observations);
         }
 
-        /// <summary>
-        /// Retrieves a single observation by its FHIR ID.
-        /// </summary>
-        /// <param name="id">The FHIR ID of the observation to retrieve.</param>
-        /// <returns>The requested observation or a 404 Not Found result.</returns>
         [Authorize]
         [HttpGet("{id}")]
         public async Task<ActionResult<Observation>> GetObservation(string id)
         {
+            var cacheKey = $"observation:{id}";
+            var cached = await _cache.GetStringAsync(cacheKey);
+
+            if (!string.IsNullOrEmpty(cached))
+            {
+                _logger.LogInformation("Cache hit for observation {id}", id);
+                var observation = JsonConvert.DeserializeObject<Observation>(cached);
+                return Ok(observation);
+            }
+
             try
             {
                 var observation = await _fhirClient.ReadAsync<Observation>($"Observation/{id}");
+
+                await _cache.SetStringAsync(cacheKey, JsonConvert.SerializeObject(observation), new DistributedCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
+                });
+
                 return Ok(observation);
             }
             catch (FhirOperationException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)
@@ -83,11 +115,6 @@ namespace FHIRWebApi.Controllers
             }
         }
 
-        /// <summary>
-        /// Creates a new FHIR Observation resource.
-        /// </summary>
-        /// <param name="observation">The DTO representing observation input data.</param>
-        /// <returns>The created observation with HTTP 201 response.</returns>
         [Authorize]
         [HttpPost]
         public async Task<ActionResult<Observation>> CreateObservation([FromBody] CreateObservationRequest observation)
@@ -98,10 +125,7 @@ namespace FHIRWebApi.Controllers
             var fhirObservation = new Observation
             {
                 Status = ObservationStatus.Final,
-                Subject = new ResourceReference
-                {
-                    Reference = observation.SubjectId // e.g. "Patient/123"
-                },
+                Subject = new ResourceReference { Reference = observation.SubjectId },
                 Code = new CodeableConcept
                 {
                     Coding = new List<Coding>
@@ -126,15 +150,15 @@ namespace FHIRWebApi.Controllers
             };
 
             var created = await _fhirClient.CreateAsync(fhirObservation);
+
+            // Invalidate caches
+            await _cache.RemoveAsync("observations:latest");
+            if (!string.IsNullOrEmpty(observation.SubjectId))
+                await _cache.RemoveAsync($"observation:patient:{observation.SubjectId.Replace("Patient/", "")}");
+
             return CreatedAtAction(nameof(GetObservation), new { id = created.Id }, created);
         }
 
-        /// <summary>
-        /// Updates an existing observation by ID.
-        /// </summary>
-        /// <param name="id">The ID of the observation to update.</param>
-        /// <param name="observation">The updated observation payload.</param>
-        /// <returns>The updated observation or a 400 Bad Request if IDs mismatch.</returns>
         [Authorize]
         [HttpPut("{id}")]
         public async Task<ActionResult<Observation>> UpdateObservation(string id, [FromBody] Observation observation)
@@ -143,14 +167,16 @@ namespace FHIRWebApi.Controllers
                 return BadRequest("Mismatched Observation ID");
 
             var updated = await _fhirClient.UpdateAsync(observation);
+
+            // Invalidate caches
+            await _cache.RemoveAsync($"observation:{id}");
+            await _cache.RemoveAsync("observations:latest");
+            if (!string.IsNullOrEmpty(observation.Subject?.Reference))
+                await _cache.RemoveAsync($"observation:patient:{observation.Subject.Reference.Replace("Patient/", "")}");
+
             return Ok(updated);
         }
 
-        /// <summary>
-        /// Deletes an observation by its FHIR ID.
-        /// </summary>
-        /// <param name="id">The ID of the observation to delete.</param>
-        /// <returns>204 No Content if successful, 404 if not found.</returns>
         [Authorize]
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteObservation(string id)
@@ -158,6 +184,11 @@ namespace FHIRWebApi.Controllers
             try
             {
                 await _fhirClient.DeleteAsync($"Observation/{id}");
+
+                // Invalidate caches
+                await _cache.RemoveAsync($"observation:{id}");
+                await _cache.RemoveAsync("observations:latest");
+
                 return NoContent();
             }
             catch (FhirOperationException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)
