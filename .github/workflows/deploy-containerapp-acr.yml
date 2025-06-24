@@ -8,7 +8,7 @@ on:
 env:
   IMAGE_NAME: fhirwebapi
   ACR_NAME: fhirregistry
-  RESOURCE_GROUP: FHIRAppRG
+  RESOURCE_GROUP: rg-fhirwebapi
   CONTAINERAPP_NAME: fhirwebapi
   CONTAINERAPP_ENV_NAME: fhir-env
   LOCATION: eastus
