@@ -53,7 +53,7 @@ builder.Services.AddSingleton(new FhirClient("https://server.fire.ly", new FhirC
 //    PreferredReturn = Prefer.ReturnRepresentation,  
 //    Timeout = 30_000
 //}));
-builder.Services.AddControllers().AddNewtonsoftJson(); 
+builder.Services.AddControllers().AddNewtonsoftJson();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
@@ -61,16 +61,14 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+
+app.MapOpenApi();
+app.UseSwagger();
+app.UseSwaggerUI(options =>
 {
-    app.MapOpenApi();
-    app.UseSwagger();
-    app.UseSwaggerUI(options =>
-    {
-        options.SwaggerEndpoint("/swagger/v1/swagger.json", "FHIR Patient API V1");
-    });
-}
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "FHIR Patient API V1");
+});
+
 
 app.Use(async (context, next) =>
 {
