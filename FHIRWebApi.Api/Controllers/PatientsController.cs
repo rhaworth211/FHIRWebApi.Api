@@ -1,5 +1,6 @@
 ﻿using FHIRWebApi.Api.Controllers;
 using FHIRWebApi.Application.DTOs;
+using FHIRWebApi.Services;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Rest;
 using Microsoft.AspNetCore.Authorization;
@@ -8,72 +9,79 @@ using Microsoft.Extensions.Caching.Distributed;
 using Newtonsoft.Json;
 
 namespace FHIRHelpers.Api.Controllers
-{    
-
+{
     /// <summary>
     /// API controller for managing FHIR Patient resources.
     /// Provides endpoints to create, read, update, and delete patients via FHIR server.
     /// </summary>
-    [Route("api/[controller]")]
     [ApiController]
+    [Route("api/[controller]")]
+    [Produces("application/json")]
     public class PatientsController : ControllerBase, IPatientController
-    {        
-        private readonly FhirClient _fhirClient;
+    {
+        private readonly IFhirPatientService _fhirService;
         private readonly IDistributedCache _cache;
         private readonly ILogger<PatientsController> _logger;
 
-        /// <summary>
-        /// Constructs a new instance of the <see cref="PatientsController"/>.
-        /// </summary>
-        /// <param name="fhirClient">Injected FHIR client used to interact with the FHIR server.</param>
-        public PatientsController(FhirClient fhirClient, IDistributedCache cache, ILogger<PatientsController> logger)
+        public PatientsController(IFhirPatientService fhirService, IDistributedCache cache, ILogger<PatientsController> logger)
         {
-            _fhirClient = fhirClient;
+            _fhirService = fhirService;
             _cache = cache;
             _logger = logger;
         }
 
         /// <summary>
-        /// Retrieves the latest 20 patients using a summary-only FHIR query.
+        /// Retrieves a list of FHIR patients from the server, with optional limit.
         /// </summary>
-        /// <returns>A list of FHIR Patient resources.</returns>
+        /// <param name="limit">Maximum number of patients to return. Defaults to 20.</param>
+        /// <returns>List of Patient resources.</returns>
+        /// <response code="200">List of patients retrieved successfully.</response>
         [Authorize]
-        [HttpGet()]
-        public async Task<ActionResult<IEnumerable<Patient>>> GetPatients()
+        [HttpGet]
+        [ProducesResponseType(typeof(IEnumerable<Patient>), 200)]
+        public async Task<ActionResult<IEnumerable<Patient>>> GetPatients([FromQuery] int limit = 20)
         {
-            const string cacheKey = "patients:latest";
+            string cacheKey = $"patients:latest:{limit}";
             var cached = await _cache.GetStringAsync(cacheKey);
 
             if (!string.IsNullOrEmpty(cached))
             {
-                _logger.LogInformation("Cache hit for patient list.");
+                _logger.LogInformation("Cache hit for patient list with limit {Limit}", limit);
                 var cachedPatients = JsonConvert.DeserializeObject<List<Patient>>(cached);
                 return Ok(cachedPatients);
             }
 
-            var searchParams = new SearchParams().LimitTo(20).SummaryOnly();
-            var bundle = await _fhirClient.SearchAsync<Patient>(searchParams);
+            var searchParams = new SearchParams().LimitTo(limit);
+            var bundle = await _fhirService.SearchPatientsAsync(searchParams);
 
             if (bundle?.Entry == null)
-            {
                 return Ok(new List<Patient>());
-            }
 
             var patients = bundle.Entry
                 .Where(e => e.Resource is Patient)
                 .Select(e => (Patient)e.Resource!)
                 .ToList();
 
+            await _cache.SetStringAsync(cacheKey, JsonConvert.SerializeObject(patients), new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
+            });
+
             return Ok(patients);
         }
 
+
         /// <summary>
-        /// Retrieves a patient by its FHIR ID.
+        /// Retrieves a patient by their FHIR ID.
         /// </summary>
-        /// <param name="id">The FHIR Patient ID.</param>
-        /// <returns>The requested Patient or 404 if not found.</returns>
+        /// <param name="id">The unique FHIR Patient ID.</param>
+        /// <returns>The requested Patient resource.</returns>
+        /// <response code="200">Patient found and returned.</response>
+        /// <response code="404">Patient with the given ID does not exist.</response>
         [Authorize]
         [HttpGet("{id}")]
+        [ProducesResponseType(typeof(Patient), 200)]
+        [ProducesResponseType(404)]
         public async Task<ActionResult<Patient>> GetPatient(string id)
         {
             var cacheKey = $"patient:{id}";
@@ -88,10 +96,9 @@ namespace FHIRHelpers.Api.Controllers
 
             try
             {
-                var patient = await _fhirClient.ReadAsync<Patient>($"Patient/{id}");
+                var patient = await _fhirService.ReadPatientAsync(id);
 
-                var json = JsonConvert.SerializeObject(patient); 
-                await _cache.SetStringAsync(cacheKey, json, new DistributedCacheEntryOptions
+                await _cache.SetStringAsync(cacheKey, JsonConvert.SerializeObject(patient), new DistributedCacheEntryOptions
                 {
                     AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
                 });
@@ -105,18 +112,20 @@ namespace FHIRHelpers.Api.Controllers
         }
 
         /// <summary>
-        /// Creates a new patient from input DTO and returns the created FHIR Patient.
+        /// Creates a new FHIR Patient using provided data.
         /// </summary>
-        /// <param name="patient">The patient data to create.</param>
-        /// <returns>The created patient resource with HTTP 201 or an error response.</returns>
+        /// <param name="patient">DTO containing new patient information.</param>
+        /// <returns>The newly created Patient resource.</returns>
+        /// <response code="201">Patient created successfully.</response>
+        /// <response code="400">Invalid or missing patient data.</response>
         [Authorize]
         [HttpPost]
+        [ProducesResponseType(typeof(Patient), 201)]
+        [ProducesResponseType(400)]
         public async Task<ActionResult<Patient>> CreatePatient([FromBody] CreatePatientRequest patient)
         {
             if (patient == null)
-            {
                 return BadRequest("Patient data is required.");
-            }
 
             var fhirPatient = new Patient
             {
@@ -135,12 +144,10 @@ namespace FHIRHelpers.Api.Controllers
                 BirthDate = patient.BirthDate
             };
 
-            var created = await _fhirClient.CreateAsync(fhirPatient);
+            var created = await _fhirService.CreatePatientAsync(fhirPatient);
 
             if (created == null)
-            {
                 return BadRequest("Failed to create patient.");
-            }
 
             await _cache.RemoveAsync("patients:latest");
 
@@ -148,40 +155,46 @@ namespace FHIRHelpers.Api.Controllers
         }
 
         /// <summary>
-        /// Updates an existing patient resource using the provided ID and patient payload.
+        /// Updates an existing FHIR patient by ID.
         /// </summary>
-        /// <param name="id">The FHIR Patient ID to update.</param>
+        /// <param name="id">The patient ID to update.</param>
         /// <param name="updatedPatient">The updated patient resource.</param>
         /// <returns>The updated patient object.</returns>
+        /// <response code="200">Patient updated successfully.</response>
         [Authorize]
         [HttpPut("{id}")]
+        [ProducesResponseType(typeof(Patient), 200)]
         public async Task<ActionResult<Patient>> UpdatePatient(string id, [FromBody] Patient updatedPatient)
         {
             updatedPatient.Id = id;
-            var result = await _fhirClient.UpdateAsync(updatedPatient);
+            var result = await _fhirService.UpdatePatientAsync(updatedPatient);
 
-            var cacheKey = $"patient:{id}";
-            await _cache.RemoveAsync(cacheKey);
+            await _cache.RemoveAsync($"patient:{id}");
             await _cache.RemoveAsync("patients:latest");
 
             return Ok(result);
         }
 
         /// <summary>
-        /// Deletes a patient from the FHIR server by ID.
+        /// Deletes a FHIR patient by ID.
         /// </summary>
-        /// <param name="id">The FHIR Patient ID to delete.</param>
-        /// <returns>204 No Content if deleted, 404 if not found.</returns>
+        /// <param name="id">The ID of the patient to delete.</param>
+        /// <returns>No content on success; 404 if patient not found.</returns>
+        /// <response code="204">Patient deleted successfully.</response>
+        /// <response code="404">Patient not found.</response>
         [Authorize]
         [HttpDelete("{id}")]
+        [ProducesResponseType(204)]
+        [ProducesResponseType(404)]
         public async Task<IActionResult> DeletePatient(string id)
         {
             try
             {
-                await _fhirClient.DeleteAsync($"Patient/{id}");
-                var cacheKey = $"patient:{id}";
-                await _cache.RemoveAsync(cacheKey);
+                await _fhirService.DeletePatientAsync(id);
+
+                await _cache.RemoveAsync($"patient:{id}");
                 await _cache.RemoveAsync("patients:latest");
+
                 return NoContent();
             }
             catch (FhirOperationException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound)

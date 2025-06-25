@@ -3,9 +3,13 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36121.58
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FHIRWebApi.Api", ".\FHIRWebApi.Api\FHIRWebApi.Api.csproj", "{CB818E06-187B-4945-867E-925DAE1B440A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FHIRWebApi.Api", "FHIRWebApi.Api\FHIRWebApi.Api.csproj", "{CB818E06-187B-4945-867E-925DAE1B440A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FHIRWebApi.Application", ".\FHIRWebApi.Application\FHIRWebApi.Application.csproj", "{64B28F28-7008-491D-9A20-21605DDDE6E3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FHIRWebApi.Application", "FHIRWebApi.Application\FHIRWebApi.Application.csproj", "{64B28F28-7008-491D-9A20-21605DDDE6E3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FHIRWebApi.Api.Tests", "FHIRWebApi.Api.Tests\FHIRWebApi.Api.Tests.csproj", "{85A5770C-279B-459A-A9E6-B83FD2F2E853}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FHIRWebApi.Services", "FHIRWebApi.Services\FHIRWebApi.Services.csproj", "{AA25E61B-07E4-4E51-8FF3-87D7DBC1C137}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +25,14 @@ Global
 		{64B28F28-7008-491D-9A20-21605DDDE6E3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{64B28F28-7008-491D-9A20-21605DDDE6E3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{64B28F28-7008-491D-9A20-21605DDDE6E3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{85A5770C-279B-459A-A9E6-B83FD2F2E853}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{85A5770C-279B-459A-A9E6-B83FD2F2E853}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{85A5770C-279B-459A-A9E6-B83FD2F2E853}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{85A5770C-279B-459A-A9E6-B83FD2F2E853}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AA25E61B-07E4-4E51-8FF3-87D7DBC1C137}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AA25E61B-07E4-4E51-8FF3-87D7DBC1C137}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AA25E61B-07E4-4E51-8FF3-87D7DBC1C137}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AA25E61B-07E4-4E51-8FF3-87D7DBC1C137}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

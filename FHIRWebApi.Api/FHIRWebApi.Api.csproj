@@ -12,7 +12,7 @@
   <ItemGroup>
     <PackageReference Include="Azure.Identity" Version="1.14.0" />
     <PackageReference Include="Azure.Security.KeyVault.Secrets" Version="4.8.0" />
-    <PackageReference Include="Hl7.Fhir.R4" Version="5.11.7" />
+    <PackageReference Include="Hl7.Fhir.R4" Version="5.12.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.6" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="9.0.6" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.6" />
@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FHIRWebApi.Application\FHIRWebApi.Application.csproj" />
+    <ProjectReference Include="..\FHIRWebApi.Services\FHIRWebApi.Services.csproj" />
   </ItemGroup>
 
 </Project>

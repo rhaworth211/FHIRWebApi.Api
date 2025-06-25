@@ -1,5 +1,6 @@
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
+using FHIRWebApi.Services;
 using Hl7.Fhir.Rest;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -61,6 +62,10 @@ builder.Services.AddSingleton(new FhirClient("https://server.fire.ly", new FhirC
     PreferredFormat = ResourceFormat.Json,
     VerifyFhirVersion = false
 }));
+
+builder.Services.AddScoped<IFhirPatientService, FhirPatientService>();
+builder.Services.AddScoped<IFhirObservationService, FhirObservationService>();
+
 //builder.Services.AddSingleton(new FhirClient("https://hapi.fhir.org/baseR4", new FhirClientSettings
 //{
 //    PreferredFormat = ResourceFormat.Json,          
@@ -68,7 +73,9 @@ builder.Services.AddSingleton(new FhirClient("https://server.fire.ly", new FhirC
 //    PreferredReturn = Prefer.ReturnRepresentation,  
 //    Timeout = 30_000
 //}));
+
 builder.Services.AddControllers().AddNewtonsoftJson();
+
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 builder.Services.AddEndpointsApiExplorer();
