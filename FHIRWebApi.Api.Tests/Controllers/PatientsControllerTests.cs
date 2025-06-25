@@ -16,10 +16,10 @@ namespace FHIRWebApi.Tests
     [TestClass]
     public class PatientsControllerTests
     {
-        private Mock<IFhirPatientService> _mockFhirService;
-        private Mock<IDistributedCache> _mockCache;
-        private Mock<ILogger<PatientsController>> _mockLogger;
-        private PatientsController _controller;
+        private Mock<IFhirPatientService> _mockFhirService = null!;
+        private Mock<IDistributedCache> _mockCache = null!;
+        private Mock<ILogger<PatientsController>> _mockLogger = null!;
+        private PatientsController _controller = null!;
 
         [TestInitialize]
         public void Setup()

@@ -8,9 +8,14 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add Redis Cache using Azure Key Vault for secrets
-var keyVaultUrl = builder.Configuration["KeyVault:Url"]; 
+var keyVaultUrl = builder.Configuration["KeyVault:Url"];
 var redisSecretName = "RedisPrimaryKey";
+
+// Validate KeyVault URL
+if (string.IsNullOrEmpty(keyVaultUrl))
+{
+    throw new ArgumentNullException(nameof(keyVaultUrl), "KeyVault URL cannot be null or empty.");
+}
 
 var client = new SecretClient(new Uri(keyVaultUrl), new DefaultAzureCredential());
 KeyVaultSecret redisSecret = client.GetSecret(redisSecretName);

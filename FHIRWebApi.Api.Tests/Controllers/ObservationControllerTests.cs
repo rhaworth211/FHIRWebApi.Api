@@ -15,10 +15,10 @@ namespace FHIRWebApi.Tests
     [TestClass]
     public class ObservationsControllerTests
     {
-        private Mock<IFhirObservationService> _mockFhirService;
-        private Mock<IDistributedCache> _mockCache;
-        private Mock<ILogger<ObservationsController>> _mockLogger;
-        private ObservationsController _controller;
+        private Mock<IFhirObservationService> _mockFhirService = null!;
+        private Mock<IDistributedCache> _mockCache = null!;
+        private Mock<ILogger<ObservationsController>> _mockLogger = null!;
+        private ObservationsController _controller = null!;
 
         [TestInitialize]
         public void Setup()
