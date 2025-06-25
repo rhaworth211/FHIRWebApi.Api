@@ -179,6 +179,9 @@ namespace FHIRWebApi.Controllers
 
             var created = await _fhirService.CreateObservationAsync(fhirObservation);
 
+            if (created?.Id == null) // Ensure created and its Id are not null
+                return Problem("Failed to create observation.");
+
             await _cache.RemoveAsync("observations:all");
             if (!string.IsNullOrEmpty(observation.SubjectId))
                 await _cache.RemoveAsync($"observation:patient:{observation.SubjectId.Replace("Patient/", "").ToLower()}");
